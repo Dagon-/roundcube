@@ -5,6 +5,7 @@ from aws_cdk import aws_route53 as route53
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_rds as rds
 from aws_cdk import aws_resourcegroups as rg
+from aws_cdk import aws_secretsmanager as sm
 
 class RoundcubeStack(core.Stack):
 
@@ -50,6 +51,14 @@ class RoundcubeStack(core.Stack):
         instance.connections.allow_from(ec2.Peer.ipv4("109.255.202.235/32"), ec2.Port.tcp(443), "Allow HTTPS")
 
         ### Aurora cluster
+        aurora_secret = sm.Secret(self, "secret",
+            generate_secret_string = sm.SecretStringGenerator(
+                generate_string_key    = "password",
+                secret_string_template = '{"username": "roundcube"}',
+                exclude_punctuation    = True,
+                password_length        = 30
+            )
+        )
 
         # no l2 construct for serverless yet
         db_subnet_list = []
@@ -60,11 +69,12 @@ class RoundcubeStack(core.Stack):
             db_subnet_group_description = "subnet group",
             subnet_ids                  = db_subnet_list
         )
+
         rds.CfnDBCluster(self, "db-cluster",
             database_name         = "roundcube",
             db_cluster_identifier = "serverless-cluster",
-            master_username       = "roundcube",
-            master_user_password  = "SFSdfsfsdf!sf3",
+            master_username       = aurora_secret.secret_value_from_json('username').to_string(),
+            master_user_password  = aurora_secret.secret_value_from_json('password').to_string(),
             engine                = "aurora",
             engine_mode           = "serverless",
             enable_http_endpoint  = True,
